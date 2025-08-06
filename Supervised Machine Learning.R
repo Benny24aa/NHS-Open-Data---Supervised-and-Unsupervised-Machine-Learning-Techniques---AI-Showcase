@@ -7,16 +7,83 @@ library(caret)
 library(randomForest)
 library(xgboost)
 
-df <- get_resource(res_id = "fa5bbede-475a-4ca9-a71f-3d521657e7c6") # 2024 Prescribed and Dispensed Data (Used this as it's fullly complete)
+df <- get_resource(res_id = "a203c8fc-c19d-451c-b637-781ea7c2066c") 
+
+df$PrescriberLocation <- as.numeric(df$PrescriberLocation)
+
+
+gp_list <- get_resource(res_id = "30b06220-17ad-44e8-b6c5-658d41ec1ea5") %>% 
+  select(PracticeCode, HB) %>% 
+  unique() %>% 
+  rename(PrescriberLocation = PracticeCode)
 
 df <- df %>% 
-  select(PaidDateMonth, PrescriberLocation, PrescriberLocationType, DispenserLocation, DispenserLocationType, NumberOfPaidItems)
+  filter(PrescriberLocationType == "GP PRACTICE")
 
-df <- df %>% 
-  select(PaidDateMonth, PrescriberLocation, PrescriberLocationType, DispenserLocation, DispenserLocationType, NumberOfPaidItems) %>%
+df <- left_join(gp_list, df, by = "PrescriberLocation")
+
+df <- df %>%
+  select(PaidDateMonth, PrescriberLocation, PrescriberLocationType, 
+         DispenserLocation, DispenserLocationType, NumberOfPaidItems, HB) %>%
   mutate(
     PrescriberFullLocation = paste(PrescriberLocation, PrescriberLocationType, sep = " - "),
     DispenserFullLocation = paste(DispenserLocation, DispenserLocationType, sep = " - "),
     Pathway = paste(PrescriberFullLocation, "to", DispenserFullLocation)
-  ) %>% 
-  select(PaidDateMonth, NumberOfPaidItems, Pathway)
+  ) %>%
+  select(PaidDateMonth, NumberOfPaidItems, Pathway, HB)
+
+
+df <- df %>%
+  mutate(
+    PaidDateMonth = lubridate::ym(PaidDateMonth),
+    MonthNum = lubridate::month(PaidDateMonth),
+    Year = lubridate::year(PaidDateMonth)
+  )
+
+
+set.seed(123)
+rf_model <- randomForest(
+  NumberOfPaidItems ~ Pathway + MonthNum + HB,
+  data = df,
+  ntree = 500,
+  importance = TRUE
+)
+
+df$Predicted <- predict(rf_model, df)
+df$Residual <- df$NumberOfPaidItems - df$Predicted
+df$AbsResidual <- abs(df$Residual)
+
+
+threshold <- quantile(df$AbsResidual, 0.95)
+df <- df %>%
+  mutate(Outlier = AbsResidual > threshold)
+
+
+
+df_plot <- df %>%
+  mutate(
+    HoverText = paste0("Pathway: ", Pathway,
+                       "<br>Actual: ", NumberOfPaidItems,
+                       "<br>Predicted: ", round(Predicted),
+                       "<br>Residual: ", round(Residual),
+                       "<br>Health Board: ", HB,
+                       "<br>Date: ", PaidDateMonth)
+  )
+
+plot_ly(
+  data = df_plot,
+  x = ~Predicted,
+  y = ~NumberOfPaidItems,
+  type = 'scatter',
+  mode = 'markers',
+  color = ~Outlier,
+  colors = c('FALSE' = 'blue', 'TRUE' = 'red'),
+  text = ~HoverText,
+  hoverinfo = 'text',
+  marker = list(size = 10, opacity = 0.7)
+) %>%
+  layout(
+    title = "Predicted vs Actual Number of Paid Items",
+    xaxis = list(title = "Predicted NumberOfPaidItems"),
+    yaxis = list(title = "Actual NumberOfPaidItems")
+  )
