@@ -1,0 +1,32 @@
+---
+title: "Fraud Detection Report"
+fontsize: 20
+output:
+  word_document:
+
+    
+params:
+  health_board_rmd: "S08000015"
+---
+
+# Potential Fraud - Random Forest
+
+## Top 10 Prescriber to Dispenser Locations
+
+This table shows the top 10 Prescribe/Dispenser locations based on resiude.
+
+```{r table_1, ft.align="left"}
+fraud_data_table
+
+```
+
+\newpage
+
+## Test Data Graph
+
+This graph shows the output for the random forest model using NHS open data source Prescriber/Dispenser Dataset.
+
+```{r graph_1, ft.align="left"}
+final_graph
+
+```

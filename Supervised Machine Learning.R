@@ -13,7 +13,7 @@ df$PrescriberLocation <- as.numeric(df$PrescriberLocation)
 
 
 gp_list <- get_resource(res_id = "30b06220-17ad-44e8-b6c5-658d41ec1ea5") %>% 
-  select(PracticeCode, HB) %>% 
+  select(PracticeCode, HB, HSCP, DataZone, GPCluster, PracticeListSize) %>% 
   unique() %>% 
   rename(PrescriberLocation = PracticeCode)
 
@@ -23,14 +23,16 @@ df <- df %>%
 df <- left_join(gp_list, df, by = "PrescriberLocation")
 
 df <- df %>%
-  select(PaidDateMonth, PrescriberLocation, PrescriberLocationType, 
-         DispenserLocation, DispenserLocationType, NumberOfPaidItems, HB) %>%
-  mutate(
-    PrescriberFullLocation = paste(PrescriberLocation, PrescriberLocationType, sep = " - "),
-    DispenserFullLocation = paste(DispenserLocation, DispenserLocationType, sep = " - "),
-    Pathway = paste(PrescriberFullLocation, "to", DispenserFullLocation)
-  ) %>%
-  select(PaidDateMonth, NumberOfPaidItems, Pathway, HB)
+  select(PaidDateMonth, PrescriberLocation, PrescriberLocationType,
+         DispenserLocation, DispenserLocationType, NumberOfPaidItems, HB, HSCP, DataZone, GPCluster, PracticeListSize)
+
+# %>%
+#   mutate(
+#     PrescriberFullLocation = paste(PrescriberLocation, PrescriberLocationType, sep = " - "),
+#     DispenserFullLocation = paste(DispenserLocation, DispenserLocationType, sep = " - "),
+#     Pathway = paste(PrescriberFullLocation, "to", DispenserFullLocation)
+#   ) %>%
+#   select(PaidDateMonth, NumberOfPaidItems, Pathway, HB, HSCP, DataZone, GPCluster, PracticeListSize)
 
 
 df <- df %>%
@@ -43,7 +45,7 @@ df <- df %>%
 
 set.seed(123)
 rf_model <- randomForest(
-  NumberOfPaidItems ~ Pathway + MonthNum + HB,
+  NumberOfPaidItems ~ PrescriberLocation + PrescriberLocationType + DispenserLocation + DispenserLocationType + MonthNum + HB + HSCP + DataZone + GPCluster + PracticeListSize,
   data = df,
   ntree = 500,
   importance = TRUE
@@ -58,19 +60,23 @@ threshold <- quantile(df$AbsResidual, 0.95)
 df <- df %>%
   mutate(Outlier = AbsResidual > threshold)
 
-
+library(plotly)
 
 df_plot <- df %>%
   mutate(
-    HoverText = paste0("Pathway: ", Pathway,
+    HoverText = paste0("Pescriber: ", PrescriberLocation,
+                       "Dispenser: ", DispenserLocation,
+                       "Prescriber Type: ", PrescriberLocationType,
+                       "Dispenser Type: ", DispenserLocationType,
                        "<br>Actual: ", NumberOfPaidItems,
                        "<br>Predicted: ", round(Predicted),
                        "<br>Residual: ", round(Residual),
                        "<br>Health Board: ", HB,
-                       "<br>Date: ", PaidDateMonth)
+                       "<br>Date: ", PaidDateMonth,
+                       "<br>")
   )
 
-plot_ly(
+a <- plot_ly(
   data = df_plot,
   x = ~Predicted,
   y = ~NumberOfPaidItems,
@@ -84,6 +90,9 @@ plot_ly(
 ) %>%
   layout(
     title = "Predicted vs Actual Number of Paid Items",
-    xaxis = list(title = "Predicted NumberOfPaidItems"),
+    xaxis = list(title = "Predicted NumberOfPaiItems"),
     yaxis = list(title = "Actual NumberOfPaidItems")
   )
+
+
+a
